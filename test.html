@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kommissar ermittelt</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6; /* Light gray background */
+        }
+        .character-button {
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+        .character-button.selected {
+            border-color: #3b82f6; /* Blue border when selected */
+            transform: scale(1.05);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .chat-bubble {
+            max-width: 80%;
+            padding: 10px 15px;
+            border-radius: 15px;
+            margin-bottom: 10px;
+            word-wrap: break-word;
+        }
+        .chat-bubble.user {
+            background-color: #3b82f6; /* Blue for user */
+            color: white;
+            margin-left: auto;
+            border-bottom-right-radius: 5px;
+        }
+        .chat-bubble.ai {
+            background-color: #e5e7eb; /* Gray for AI */
+            color: #1f2937; /* Dark gray text */
+            margin-right: auto;
+            border-bottom-left-radius: 5px;
+        }
+        /* Simple spinner for modal */
+        .modal-spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
+            border-top: 4px solid #3b82f6; /* Blue spinner */
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        /* Hide scrollbar for chat log, but allow scrolling */
+         #chat-log {
+            scrollbar-width: none; /* Firefox */
+            -ms-overflow-style: none;  /* IE and Edge */
+        }
+        #chat-log::-webkit-scrollbar {
+            display: none; /* Chrome, Safari, Opera */
+        }
+        /* Styles for the custom confirmation modal */
+        #confirm-accusation-modal {
+            background-color: rgba(0, 0, 0, 0.6); /* Semi-transparent backdrop */
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-4 md:p-8">
+
+    {/* API Key Modal */}
+    <div id="api-key-modal" class="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center z-50 p-4">
+        <div class="bg-white p-6 rounded-lg shadow-xl max-w-md w-full">
+            <div id="api-key-content">
+                <h2 class="text-xl font-bold mb-4 text-gray-800">Gemini API Schlüssel benötigt</h2>
+                <p class="text-gray-600 mb-4">Bitte gib deinen Gemini API Schlüssel ein, um das Spiel zu starten. Du kannst einen Schlüssel auf <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-blue-500 hover:underline">Google AI Studio</a> erhalten.</p>
+                <input type="password" id="api-key-input" class="w-full px-3 py-2 border border-gray-300 rounded-md mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Dein API Schlüssel">
+                <button id="submit-api-key" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition duration-300">Spiel starten</button>
+                <p id="api-key-error" class="text-red-500 text-sm mt-2 hidden">Fehler: Bitte gib einen gültigen API Schlüssel ein.</p>
+            </div>
+            <div id="modal-loading-indicator" class="hidden flex flex-col items-center justify-center">
+                 <div class="modal-spinner mb-4"></div>
+                 <p class="text-gray-700">Generiere Fall...</p>
+            </div>
+        </div>
+    </div>
+
+    {/* Custom Confirmation Modal for Accusation */}
+    <div id="confirm-accusation-modal" class="hidden fixed inset-0 items-center justify-center z-50 p-4">
+        <div class="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full">
+            <h3 class="text-lg font-semibold mb-4 text-gray-800">Beschuldigung bestätigen</h3>
+            <p class="text-gray-600 mb-6">Bist du sicher, dass du <strong id="confirm-accusation-name" class="text-gray-900">...</strong> beschuldigen möchtest?</p>
+            <div class="flex justify-end gap-3">
+                <button id="cancel-accusation-button" class="px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded-md transition duration-300">Abbrechen</button>
+                <button id="confirm-accusation-button" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md transition duration-300">Beschuldigen</button>
+            </div>
+        </div>
+    </div>
+
+
+    {/* Game Container */}
+    <div id="game-container" class="container mx-auto bg-white p-6 rounded-lg shadow-lg max-w-4xl hidden">
+         <h1 class="text-2xl md:text-3xl font-bold mb-6 text-center text-gray-800">Kommissar ermittelt</h1>
+
+        <div id="initial-briefing" class="mb-6 p-4 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 rounded-md shadow">
+            <p><strong id="boss-name">Chef:</strong> <span id="boss-emoji"></span> <span id="briefing-text">Warte auf das Briefing...</span></p>
+        </div>
+
+        <div class="mb-6">
+            <h2 class="text-xl font-semibold mb-3 text-gray-700">Personen auswählen:</h2>
+            <div id="characters" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+                {/* Character buttons will be inserted here */}
+            </div>
+             <p class="text-sm text-gray-500 mt-2">Klicke auf eine Person, um sie zu befragen oder zu beschuldigen.</p>
+        </div>
+
+        <div id="interaction-area" class="mb-6 hidden">
+             <h2 class="text-xl font-semibold mb-3 text-gray-700">Interaktion mit <span id="selected-character-name" class="font-bold">...</span>:</h2>
+            <div id="chat-log" class="h-64 overflow-y-auto border border-gray-300 rounded-md p-4 mb-4 bg-gray-50">
+                {/* Chat messages will appear here */}
+            </div>
+            <div class="flex gap-2">
+                <input type="text" id="player-input" class="flex-grow px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Deine Frage eingeben...">
+                <button id="send-button" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition duration-300">Fragen</button>
+                <button id="accuse-button" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-md transition duration-300 hidden">Beschuldigen</button>
+            </div>
+             <p id="interaction-error" class="text-red-500 text-sm mt-2 hidden"></p>
+        </div>
+
+        <div id="win-lose-message" class="mt-6 p-4 rounded-md shadow text-center font-bold text-lg hidden">
+            {/* Win/Lose message appears here */}
+        </div>
+    </div>
+
+    <script>
+        // --- Configuration ---
+        const API_KEY_MODAL = document.getElementById('api-key-modal');
+        const API_KEY_CONTENT = document.getElementById('api-key-content');
+        const MODAL_LOADING_INDICATOR = document.getElementById('modal-loading-indicator');
+        const API_KEY_INPUT = document.getElementById('api-key-input');
+        const SUBMIT_API_KEY_BUTTON = document.getElementById('submit-api-key');
+        const API_KEY_ERROR = document.getElementById('api-key-error');
+        const GAME_CONTAINER = document.getElementById('game-container');
+        const BOSS_NAME_EL = document.getElementById('boss-name');
+        const BOSS_EMOJI_EL = document.getElementById('boss-emoji');
+        const BRIEFING_TEXT_EL = document.getElementById('briefing-text');
+        const CHARACTERS_DIV = document.getElementById('characters');
+        const INTERACTION_AREA = document.getElementById('interaction-area');
+        const SELECTED_CHAR_NAME_EL = document.getElementById('selected-character-name');
+        const CHAT_LOG = document.getElementById('chat-log');
+        const PLAYER_INPUT = document.getElementById('player-input');
+        const SEND_BUTTON = document.getElementById('send-button');
+        const ACCUSE_BUTTON = document.getElementById('accuse-button');
+        const WIN_LOSE_MESSAGE = document.getElementById('win-lose-message');
+        const INTERACTION_ERROR = document.getElementById('interaction-error');
+        const CONFIRM_ACCUSATION_MODAL = document.getElementById('confirm-accusation-modal');
+        const CONFIRM_ACCUSATION_NAME = document.getElementById('confirm-accusation-name');
+        const CANCEL_ACCUSATION_BUTTON = document.getElementById('cancel-accusation-button');
+        const CONFIRM_ACCUSATION_BUTTON = document.getElementById('confirm-accusation-button');
+
+        let apiKey = '';
+        let gameData = null;
+        let selectedCharacterId = null;
+        let conversationHistory = {};
+        let gameEnded = false;
+
+        // --- Gemini API Interaction ---
+        const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=';
+
+        async function callGeminiAPI(prompt, history = [], generationConfig = null) {
+            INTERACTION_ERROR.classList.add('hidden');
+            try {
+                const requestBody = {
+                    contents: [...history, { role: 'user', parts: [{ text: prompt }] }],
+                };
+                if (generationConfig) {
+                    requestBody.generationConfig = generationConfig;
+                }
+
+                const response = await fetch(`${API_URL}${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', },
+                    body: JSON.stringify(requestBody),
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    console.error('API Error Response:', errorData);
+                    const message = errorData?.error?.message || '';
+                    if (message.includes('API key not valid') || message.includes('API_KEY_INVALID')) {
+                         throw new Error('API key not valid');
+                    }
+                    throw new Error(`API Fehler: ${response.status} ${response.statusText}. Details: ${message}`);
+                }
+
+                const data = await response.json();
+
+                if (!data.candidates || !data.candidates[0]) {
+                     console.error('Invalid API response structure (no candidates):', data);
+                     throw new Error('Unerwartete API Antwortstruktur (keine Kandidaten).');
+                }
+                 const candidate = data.candidates[0];
+                 if (candidate.finishReason && candidate.finishReason !== 'STOP' && candidate.finishReason !== 'MAX_TOKENS') {
+                     console.error('API call finished due to:', candidate.finishReason, candidate.safetyRatings);
+                     let reasonText = candidate.finishReason;
+                     if (candidate.finishReason === 'SAFETY') reasonText = 'Sicherheitseinstellungen';
+                     else if (candidate.finishReason === 'RECITATION') reasonText = 'Rezitieren von Inhalten';
+                     else if (candidate.finishReason === 'OTHER') reasonText = 'Unbekannter Grund';
+                     throw new Error(`API Anfrage blockiert oder fehlerhaft (Grund: ${reasonText}).`);
+                 }
+                 if (!candidate.content || !candidate.content.parts) {
+                     console.warn('API response candidate has no content parts:', candidate);
+                      if(candidate.finishReason === 'SAFETY') return "(Antwort aufgrund von Sicherheitseinstellungen blockiert)";
+                     if (candidate.finishReason === 'STOP' || candidate.finishReason === 'MAX_TOKENS') return "";
+                     throw new Error('API Antwort enthält keine Inhaltsteile trotz erfolgreichem Abschluss.');
+                 }
+
+                 let textResult = '';
+                 if (Array.isArray(candidate.content.parts)) {
+                    textResult = candidate.content.parts.map(part => part.text).join('');
+                 }
+                textResult = textResult.replace(/```json\n?|\n?```/g, '').trim();
+                return textResult;
+
+            } catch (error) {
+                console.error('Fehler bei der Kommunikation mit der Gemini API:', error);
+                if (error.message === 'API key not valid') {
+                    showApiKeyError('Ungültiger API Schlüssel. Bitte überprüfe ihn.');
+                    API_KEY_MODAL.style.display = 'flex';
+                    MODAL_LOADING_INDICATOR.classList.add('hidden');
+                    API_KEY_CONTENT.classList.remove('hidden');
+                    API_KEY_INPUT.disabled = false;
+                    SUBMIT_API_KEY_BUTTON.disabled = false;
+                    GAME_CONTAINER.classList.add('hidden');
+                } else {
+                     INTERACTION_ERROR.textContent = `API Kommunikationsfehler: ${error.message}`;
+                     INTERACTION_ERROR.classList.remove('hidden');
+                }
+                return null;
+            }
+        }
+
+        // --- Game Logic ---
+
+        function showApiKeyError(message) {
+             API_KEY_ERROR.textContent = message;
+             API_KEY_ERROR.classList.remove('hidden');
+        }
+
+        function hideApiKeyError() {
+            API_KEY_ERROR.classList.add('hidden');
+        }
+
+        async function generatePlot() {
+            // --- UPDATED PLOT PROMPT ---
+            const plotPrompt = `
+Erstelle einen Kriminalfall für ein Text-Detektivspiel auf Deutsch. Der Spieler ist ein Kommissar.
+Gib die Ausgabe NUR als JSON-Objekt zurück, ohne umschließende Markdown-Formatierung (wie \`\`\`json).
+
+Wichtige Anweisungen für den Fall:
+1.  **Beziehungen:** Die vier Verdächtigen sollen sich untereinander unterschiedlich gut kennen (manche gut, manche kaum, manche vielleicht gar nicht). Beschreibe diese Beziehungen kurz in ihrer 'rolle' oder ihrem 'wissen'.
+2.  **Hinweise:** Es soll sowohl 'entscheidende_hinweise' geben, die direkt oder indirekt auf den Täter deuten, als auch 1-2 'falsche_faehrten', die plausibel auf einen unschuldigen Verdächtigen hindeuten.
+3.  **Realismus:** Der gesamte Fall, einschließlich der Beziehungen, Motive, Alibis und Hinweise (echte und falsche), sollte realistisch und nachvollziehbar sein. Vermeide übertriebene oder unglaubwürdige Elemente.
+4.  **Namen/Emojis:** Generiere passende, unterschiedliche Namen und Emojis für die vier Verdächtigen. Der Boss und der Polizist können feste Namen behalten.
+5.  **Täter:** Der Täter muss einer der vier Verdächtigen sein. Seine Motivation sollte nachvollziehbar sein. Er/Sie sollte versuchen, die Schuld von sich zu weisen.
+6.  **Polizist:** Der Polizist kennt den Täter nicht und gibt nur allgemeine, bereits bekannte Informationen weiter.
+
+JSON-Struktur:
+{
+  "fallbeschreibung": "Eine kurze, prägnante Beschreibung des Falls.",
+  "tatort": "Der spezifische Ort des Geschehens.",
+  "zeitpunkt": "Der ungefähre Zeitpunkt des Geschehens.",
+  "opfer": {
+      "name": "Name des Opfers",
+      "beschreibung": "Kurze Beschreibung des Opfers."
+  },
+  "boss": {
+      "name": "Kommissar Pommes", // Fester Name OK
+      "emoji": "👨‍✈️",
+      "briefing": "Eine kurze Anweisung des Chefs an den Spieler zu Beginn des Spiels, die den Fall umreißt."
+  },
+  "polizist": {
+      "id": "polizist_meier", // Feste ID OK
+      "name": "Polizist Meier", // Fester Name OK
+      "emoji": "👮‍♂️",
+      "rolle": "Ein hilfsbereiter Polizist am Tatort. Er kennt die Grundlagen, hat aber keine Ahnung, wer der Täter ist. Er kann Hinweise geben, die der Polizei schon bekannt sind, aber nicht eindeutig den Täter entlarven."
+  },
+  "verdaechtige": [ // Genau 4 Verdächtige
+    {
+      "id": "char1", // Einfache ID
+      "name": "Generiere einen passenden Namen", // KI soll Namen generieren
+      "emoji": "Generiere ein passendes Emoji", // KI soll Emoji generieren
+      "rolle": "Beschreibung der Person, Beziehung zum Opfer UND zu anderen Verdächtigen (variierende Bekanntheit).",
+      "motiv": "Ein mögliches, realistisches Motiv für die Tat.",
+      "alibi": "Das Alibi der Person (kann wahr, falsch oder teilweise wahr sein).",
+      "wissen": "Spezifisches Wissen oder Geheimnisse dieser Person bezüglich des Falls, evtl. über andere Verdächtige. Kann auch irreführende Infos enthalten."
+    },
+    {
+      "id": "char2",
+      "name": "Generiere einen passenden Namen",
+      "emoji": "Generiere ein passendes Emoji",
+      "rolle": "...", "motiv": "...", "alibi": "...", "wissen": "..."
+    },
+    {
+      "id": "char3",
+      "name": "Generiere einen passenden Namen",
+      "emoji": "Generiere ein passendes Emoji",
+      "rolle": "...", "motiv": "...", "alibi": "...", "wissen": "..."
+    },
+    {
+      "id": "char4",
+      "name": "Generiere einen passenden Namen",
+      "emoji": "Generiere ein passendes Emoji",
+      "rolle": "...", "motiv": "...", "alibi": "...", "wissen": "..."
+    }
+  ],
+  "taeter_id": "charX", // Die ID ('char1', 'char2', 'char3' oder 'char4') eines der Verdächtigen
+  "entscheidende_hinweise": [ // 2-3 Hinweise, die zur Lösung führen (auf den Täter deuten)
+    "Echter Hinweis 1...",
+    "Echter Hinweis 2..."
+  ],
+  "falsche_faehrten": [ // 1-2 Hinweise, die plausibel auf einen UNSCHULDIGEN Verdächtigen deuten
+      "Irreführender Hinweis 1 (deutet auf Unschuldigen X)..."
+  ],
+  "loesung_erklaerung": "Eine kurze Erklärung, warum die Person der Täter ist und wie die echten Hinweise zusammenpassen."
+}
+
+Stelle sicher, dass das JSON vollständig und korrekt formatiert ist.
+`;
+            // --- END OF UPDATED PLOT PROMPT ---
+
+
+            let attempts = 0;
+            const maxAttempts = 3;
+            let rawResponse = null;
+            gameData = null;
+            const plotGenerationConfig = { maxOutputTokens: 2048 }; // Keep high token limit
+
+            while (attempts < maxAttempts && !gameData) {
+                attempts++;
+                console.log(`Plot generation attempt ${attempts}...`);
+                rawResponse = await callGeminiAPI(plotPrompt, [], plotGenerationConfig);
+
+                if (rawResponse !== null) {
+                    try {
+                        // Pre-check for JSON structure
+                        if (rawResponse.trim().startsWith('{') && rawResponse.trim().endsWith('}')) {
+                            gameData = JSON.parse(rawResponse);
+                            // More robust validation
+                            if (gameData &&
+                                gameData.verdaechtige && gameData.verdaechtige.length === 4 &&
+                                gameData.taeter_id && gameData.verdaechtige.some(v => v.id === gameData.taeter_id) && // Check if taeter_id is valid
+                                gameData.boss && gameData.polizist &&
+                                gameData.entscheidende_hinweise && Array.isArray(gameData.entscheidende_hinweise) &&
+                                gameData.falsche_faehrten && Array.isArray(gameData.falsche_faehrten) && // Check new field
+                                gameData.verdaechtige.every(v => v.id && v.name && v.emoji && v.rolle && v.motiv && v.alibi && v.wissen) // Check suspect fields
+                               )
+                            {
+                                console.log("Plot generated and validated successfully.");
+                                break; // Exit loop on success
+                            } else {
+                                console.error("Generated JSON is invalid, incomplete, or failed validation:", gameData);
+                                gameData = null; // Reset gameData if validation fails
+                            }
+                        } else {
+                             console.error(`Raw response on attempt ${attempts} does not look like complete JSON.`);
+                             gameData = null;
+                        }
+                    } catch (e) {
+                        console.error(`Error parsing JSON on attempt ${attempts}:`, e);
+                        console.error("Raw response was:", rawResponse); // Log raw response on parse error
+                        gameData = null;
+                    }
+                } else {
+                     // API call failed (e.g., invalid key, network error)
+                     break; // Stop trying if API call itself failed
+                }
+
+                 // Wait before retrying only if parsing/validation failed but API call was okay
+                 if (attempts < maxAttempts && !gameData) {
+                     await new Promise(resolve => setTimeout(resolve, 1000));
+                 }
+            }
+
+            if (!gameData) {
+                console.error("Failed to generate a valid plot after multiple attempts.");
+                return false; // Indicate failure
+            }
+            // Post-process: Ensure taeter_id is one of the generated suspect IDs if needed (though validation check helps)
+            if (!gameData.verdaechtige.some(v => v.id === gameData.taeter_id)) {
+                 console.error("Generated taeter_id does not match any suspect ID!");
+                 // Fallback or error handling needed here - maybe pick a random suspect? Or fail generation.
+                 // For now, let's fail generation if taeter_id is invalid.
+                 gameData = null;
+                 return false;
+            }
+
+            return true; // Indicate success
+        }
+
+        function displayCharacters() {
+            CHARACTERS_DIV.innerHTML = '';
+            conversationHistory = {};
+
+            // Display suspects first
+            gameData.verdaechtige.forEach(char => {
+                addCharacterButton(char);
+                conversationHistory[char.id] = [];
+            });
+
+            // Then display the police officer
+            addCharacterButton(gameData.polizist);
+            conversationHistory[gameData.polizist.id] = [];
+        }
+
+
+        function addCharacterButton(char) {
+             const button = document.createElement('button');
+             button.classList.add('character-button', 'flex', 'flex-col', 'items-center', 'p-3', 'bg-gray-200', 'rounded-lg', 'hover:bg-gray-300', 'focus:outline-none', 'focus:ring-2', 'focus:ring-blue-400');
+             button.dataset.charId = char.id;
+
+             const emojiSpan = document.createElement('span');
+             emojiSpan.classList.add('text-4xl', 'mb-2');
+             emojiSpan.textContent = char.emoji;
+
+             const nameSpan = document.createElement('span');
+             nameSpan.classList.add('text-sm', 'font-semibold', 'text-center', 'text-gray-700');
+             nameSpan.textContent = char.name;
+
+             button.appendChild(emojiSpan);
+             button.appendChild(nameSpan);
+
+             button.addEventListener('click', () => selectCharacter(char.id));
+             CHARACTERS_DIV.appendChild(button);
+        }
+
+        function selectCharacter(charId) {
+            if (gameEnded || !gameData) return;
+
+            selectedCharacterId = charId;
+            const character = findCharacterById(charId);
+            if (!character) return;
+
+            document.querySelectorAll('.character-button').forEach(btn => {
+                btn.classList.remove('selected');
+                if (btn.dataset.charId === charId) {
+                    btn.classList.add('selected');
+                }
+            });
+
+            SELECTED_CHAR_NAME_EL.textContent = character.name;
+            INTERACTION_AREA.classList.remove('hidden');
+
+            const isSuspect = gameData.verdaechtige.some(v => v.id === charId);
+            if (isSuspect) {
+                ACCUSE_BUTTON.classList.remove('hidden');
+                ACCUSE_BUTTON.disabled = false;
+                ACCUSE_BUTTON.onclick = () => {
+                     showAccusationConfirmation(charId);
+                };
+            } else {
+                ACCUSE_BUTTON.classList.add('hidden');
+                ACCUSE_BUTTON.onclick = null;
+            }
+
+            loadConversation(charId);
+            PLAYER_INPUT.focus();
+        }
+
+
+        function findCharacterById(charId) {
+            if (!gameData) return null;
+            // Check police officer first
+            if (charId === gameData.polizist?.id) {
+                return gameData.polizist;
+            }
+            // Then check suspects
+            return gameData.verdaechtige?.find(v => v.id === charId);
+        }
+
+
+        function addChatMessage(sender, message, type) {
+            const bubble = document.createElement('div');
+            bubble.classList.add('chat-bubble', type);
+
+            const senderSpan = document.createElement('strong');
+            if (type === 'ai') {
+                 senderSpan.textContent = `${sender}: `;
+                 bubble.appendChild(senderSpan);
+            }
+
+            const messageSpan = document.createElement('span');
+            messageSpan.innerText = message || "";
+            bubble.appendChild(messageSpan);
+
+            CHAT_LOG.appendChild(bubble);
+            CHAT_LOG.scrollTop = CHAT_LOG.scrollHeight;
+        }
+
+         function loadConversation(charId) {
+            CHAT_LOG.innerHTML = '';
+            const history = conversationHistory[charId] || [];
+            history.forEach(entry => {
+                const message = entry.parts?.[0]?.text;
+                if (message !== undefined) {
+                    const type = entry.role === 'user' ? 'user' : 'ai';
+                    const character = findCharacterById(charId);
+                    const senderName = type === 'ai' ? (character?.name || 'System') : 'Du';
+                    addChatMessage(senderName, message, type);
+                }
+            });
+        }
+
+        async function handlePlayerInput() {
+            if (gameEnded || !selectedCharacterId || !gameData) return;
+
+            const question = PLAYER_INPUT.value.trim();
+            if (!question) return;
+
+            const character = findCharacterById(selectedCharacterId);
+            if (!character) return;
+
+            addChatMessage('Du', question, 'user');
+            PLAYER_INPUT.value = '';
+            SEND_BUTTON.disabled = true;
+            ACCUSE_BUTTON.disabled = true;
+
+             const currentUserHistory = conversationHistory[selectedCharacterId] || [];
+             currentUserHistory.push({ role: 'user', parts: [{ text: question }] });
+
+            // --- Construct the prompt for Gemini ---
+            // Combine all clues (real and false) for context, but AI should know which are which based on role
+            // Alternatively, only provide clues the character might plausibly know or comment on.
+            // For simplicity now, let's provide all, but the AI instructions are key.
+             const allClues = [
+                ...(gameData.entscheidende_hinweise || []),
+                ...(gameData.falsche_faehrten || [])
+             ];
+
+            let plotSummary = `
+Kriminalfall: ${gameData.fallbeschreibung}
+Tatort: ${gameData.tatort}
+Zeitpunkt: ${gameData.zeitpunkt}
+${gameData.opfer ? `Opfer: ${gameData.opfer.name} (${gameData.opfer.beschreibung})` : ''}
+Verdächtige: ${gameData.verdaechtige.map(v => `${v.name} (${v.rolle})`).join(', ')}
+Polizist vor Ort: ${gameData.polizist.name}
+Bekannte Hinweise (Mischung aus echten und falschen Fährten): ${allClues.join('; ')}
+`;
+            let characterInfo = `
+Du sprichst gerade mit ${character.name} (${character.emoji}).
+Rolle dieser Person: ${character.rolle}.
+`;
+            if (character.motiv) characterInfo += `Mögliches Motiv: ${character.motiv}.\n`;
+            if (character.alibi) characterInfo += `Alibi: ${character.alibi}.\n`;
+            if (character.wissen) characterInfo += `Spezifisches Wissen: ${character.wissen}.\n`;
+
+            // --- Instructions based on role ---
+            let instructions = '';
+            const otherSuspects = gameData.verdaechtige.filter(v => v.id !== selectedCharacterId);
+            const otherSuspectNames = otherSuspects.map(v => v.name).join(', ');
+
+            if (selectedCharacterId === gameData.taeter_id) {
+                const innocentSuspects = gameData.verdaechtige.filter(v => v.id !== gameData.taeter_id);
+                const innocentSuspectNames = innocentSuspects.map(v => v.name).join(', ');
+                // Instruction for the culprit
+                instructions = `Du bist der Täter in diesem Fall. Dein Ziel ist es, unentdeckt zu bleiben. Antworte auf Fragen so, dass du unschuldig wirkst. Lenke Verdacht geschickt ab, lüge wenn nötig über dein Alibi oder Wissen, aber vermeide offensichtliche Widersprüche zu bekannten Fakten oder den echten Hinweisen (${gameData.entscheidende_hinweise.join('; ')}), falls du darauf angesprochen wirst. **Wenn es passt, versuche plausibel, den Verdacht auf einen der anderen unschuldigen Verdächtigen (${innocentSuspectNames}) zu lenken, eventuell unter Verwendung der falschen Fährten (${gameData.falsche_faehrten.join('; ')}).** Sei vielleicht nervös oder übermäßig ruhig.`;
+            } else if (gameData.verdaechtige.some(v => v.id === selectedCharacterId)) {
+                 // Instruction for innocent suspects
+                instructions = `Du bist unschuldig in diesem Fall, aber vielleicht nervös oder hast etwas anderes zu verbergen (basierend auf deinem 'Wissen'). Antworte ehrlich auf Fragen bezüglich deines tatsächlichen Wissens und Alibis. Kommentiere Hinweise (${allClues.join('; ')}) nur, wenn du direkt danach gefragt wirst oder sie dein Alibi stützen/widerlegen. **Wenn es passt und zu deinem Wissen passt, erwähne beiläufig eine Beobachtung oder einen Verdacht gegenüber einem der anderen Verdächtigen (${otherSuspectNames}), aber erfinde nichts.** Gib nicht mehr preis als nötig.`;
+            } else if (selectedCharacterId === gameData.polizist.id) {
+                 // Instruction for the police officer
+                instructions = `Du bist ${gameData.polizist.name}. Du hilfst dem Kommissar. Gib allgemeine polizeiliche Informationen oder Beobachtungen preis, die im Spielkontext als 'schon bekannt' gelten (z.B. über gefundene Spuren, Zustand des Tatorts), aber du weißt NICHT, wer der Täter ist. Äußere keine persönlichen Vermutungen. Du kannst auf die bekannten Hinweise (${allClues.join('; ')}) hinweisen, wenn gefragt, aber interpretiere sie nicht und gib nicht preis, welche echt oder falsch sind. Sei professionell und hilfsbereit.`;
+            }
+            // --- End of Instructions ---
+
+
+            const finalPrompt = `
+Kontext: Dies ist ein Text-Detektivspiel. Der Spieler ist der Kommissar.
+${plotSummary}
+
+Du bist die Figur ${character.name} (${character.emoji}).
+Deine Details im Spiel:
+${characterInfo}
+
+Deine Anweisungen für diese Antwort:
+${instructions}
+
+Der Kommissar hat dich gerade gefragt: "${question}"
+
+Antworte kurz und prägnant (maximal 2-3 Sätze) in der Ich-Form aus der Sicht von ${character.name}, auf Deutsch. Bleibe im Charakter und beachte deine Rolle, dein Wissen und deine Anweisungen. Gib keine Informationen preis, die du laut deiner Rolle nicht wissen kannst. Gib NUR die reine Antwort der Figur zurück, ohne zusätzliche Erklärungen wie "Als [Name] würde ich sagen: ...". Wenn die Frage unklar ist oder nichts mit dem Fall zu tun hat, weise höflich darauf hin.
+`;
+
+            // --- Call API ---
+            const chatGenerationConfig = { maxOutputTokens: 300 };
+            const response = await callGeminiAPI(finalPrompt, currentUserHistory, chatGenerationConfig);
+
+            if (response !== null) {
+                 addChatMessage(character.name, response, 'ai');
+                 currentUserHistory.push({ role: 'model', parts: [{ text: response }] });
+            } else {
+                 addChatMessage('System', 'Ich konnte keine Antwort generieren.', 'ai');
+            }
+
+            SEND_BUTTON.disabled = false;
+            const isSuspect = gameData.verdaechtige.some(v => v.id === selectedCharacterId);
+            ACCUSE_BUTTON.disabled = !isSuspect;
+        }
+
+        // --- Accusation Logic with Custom Modal ---
+
+        function showAccusationConfirmation(charId) {
+             // console.log("showAccusationConfirmation called for charId:", charId);
+             if (gameEnded || !gameData) return;
+             const character = findCharacterById(charId);
+             if (!character) return;
+
+             CONFIRM_ACCUSATION_NAME.textContent = character.name;
+             const confirmHandler = () => {
+                 // console.log("Custom modal 'Confirm' clicked.");
+                 hideAccusationConfirmation();
+                 endGame(charId);
+             };
+             const cancelHandler = () => {
+                 // console.log("Custom modal 'Cancel' clicked.");
+                 hideAccusationConfirmation();
+             };
+             CONFIRM_ACCUSATION_BUTTON.onclick = confirmHandler;
+             CANCEL_ACCUSATION_BUTTON.onclick = cancelHandler;
+             CONFIRM_ACCUSATION_MODAL.classList.remove('hidden');
+             CONFIRM_ACCUSATION_MODAL.classList.add('flex');
+        }
+
+        function hideAccusationConfirmation() {
+             // console.log("Hiding custom confirmation modal.");
+             CONFIRM_ACCUSATION_MODAL.classList.add('hidden');
+             CONFIRM_ACCUSATION_MODAL.classList.remove('flex');
+             CONFIRM_ACCUSATION_BUTTON.onclick = null;
+             CANCEL_ACCUSATION_BUTTON.onclick = null;
+        }
+
+        function endGame(accusedCharId) {
+            // console.log("endGame called with accusedCharId:", accusedCharId);
+            gameEnded = true;
+            INTERACTION_AREA.classList.add('hidden');
+            document.querySelectorAll('.character-button').forEach(btn => {
+                btn.disabled = true;
+                btn.classList.add('opacity-50', 'cursor-not-allowed');
+                btn.classList.remove('hover:bg-gray-300', 'selected');
+            });
+
+            const accusedCharacter = findCharacterById(accusedCharId);
+            const actualCulprit = findCharacterById(gameData.taeter_id);
+             // console.log("Accused:", accusedCharacter?.name, "Actual Culprit:", actualCulprit?.name);
+
+            if (!accusedCharacter || !actualCulprit) {
+                 console.error("Error during game evaluation: Character data missing.");
+                 WIN_LOSE_MESSAGE.textContent = 'Ein Fehler ist bei der Spielauswertung aufgetreten.';
+                 WIN_LOSE_MESSAGE.className = 'mt-6 p-4 rounded-md shadow text-center font-bold text-lg bg-gray-300 text-gray-800';
+            } else if (accusedCharId === gameData.taeter_id) {
+                 // console.log("Player won!");
+                WIN_LOSE_MESSAGE.textContent = `🎉 Herzlichen Glückwunsch! ${accusedCharacter.name} war tatsächlich der Täter! ${gameData.loesung_erklaerung}`;
+                WIN_LOSE_MESSAGE.className = 'mt-6 p-4 rounded-md shadow text-center font-bold text-lg bg-green-200 text-green-800';
+            } else {
+                 // console.log("Player lost.");
+                WIN_LOSE_MESSAGE.textContent = `Leider falsch. ${accusedCharacter.name} war unschuldig. Der wahre Täter war ${actualCulprit.name} (${actualCulprit.emoji})! ${gameData.loesung_erklaerung}`;
+                WIN_LOSE_MESSAGE.className = 'mt-6 p-4 rounded-md shadow text-center font-bold text-lg bg-red-200 text-red-800';
+            }
+             WIN_LOSE_MESSAGE.classList.remove('hidden');
+        }
+
+        // --- Initialization ---
+        async function initializeGame() {
+             hideApiKeyError();
+             apiKey = API_KEY_INPUT.value.trim();
+             if (!apiKey) {
+                 showApiKeyError('API Schlüssel darf nicht leer sein.');
+                 return;
+             }
+
+             API_KEY_CONTENT.classList.add('hidden');
+             MODAL_LOADING_INDICATOR.classList.remove('hidden');
+             API_KEY_INPUT.disabled = true;
+             SUBMIT_API_KEY_BUTTON.disabled = true;
+
+             const plotSuccess = await generatePlot();
+
+             MODAL_LOADING_INDICATOR.classList.add('hidden');
+
+             if (plotSuccess && gameData) {
+                 API_KEY_MODAL.style.display = 'none';
+                 API_KEY_CONTENT.classList.remove('hidden');
+                 API_KEY_INPUT.disabled = false;
+                 SUBMIT_API_KEY_BUTTON.disabled = false;
+
+                 BOSS_NAME_EL.textContent = gameData.boss.name + ':';
+                 BOSS_EMOJI_EL.textContent = gameData.boss.emoji;
+                 BRIEFING_TEXT_EL.textContent = gameData.boss.briefing;
+
+                 displayCharacters();
+                 GAME_CONTAINER.classList.remove('hidden');
+                 gameEnded = false;
+                 selectedCharacterId = null;
+                 WIN_LOSE_MESSAGE.classList.add('hidden');
+                 INTERACTION_AREA.classList.add('hidden');
+
+             } else {
+                 API_KEY_CONTENT.classList.remove('hidden');
+                 API_KEY_INPUT.disabled = false;
+                 SUBMIT_API_KEY_BUTTON.disabled = false;
+
+                 if (API_KEY_ERROR.classList.contains('hidden')) {
+                    showApiKeyError('Fall konnte nicht generiert werden. API-Antwort war unvollständig oder fehlerhaft. Versuche es erneut oder prüfe die Konsole.');
+                 }
+                 API_KEY_MODAL.style.display = 'flex';
+                 console.log("Initialization failed because plot generation was unsuccessful.");
+             }
+        }
+
+        // --- Event Listeners ---
+        SUBMIT_API_KEY_BUTTON.addEventListener('click', initializeGame);
+        API_KEY_INPUT.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                initializeGame();
+            }
+        });
+        SEND_BUTTON.addEventListener('click', handlePlayerInput);
+        PLAYER_INPUT.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                handlePlayerInput();
+            }
+        });
+
+    </script>
+
+</body>
+</html>
+
